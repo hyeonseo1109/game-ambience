@@ -33,7 +33,7 @@ public sealed class ColorBarDetector(ColorBarDetectorOptions options) : IDetecto
         }
 
         var reverse = options.FillDirection is FillDirection.RightToLeft or FillDirection.BottomToTop;
-        var ordered = reverse ? scores.Reverse().ToArray() : scores;
+        var ordered = reverse ? scores.AsEnumerable().Reverse().ToArray() : scores;
         var matchedLineCount = ordered.Count(score => score >= options.LineMatchThreshold);
         if (matchedLineCount == 0) return DetectionResult.Unknown(timestamp);
 

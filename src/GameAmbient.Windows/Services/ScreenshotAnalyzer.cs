@@ -52,6 +52,21 @@ public static class ScreenshotAnalyzer
         return bitmap;
     }
 
+    public static RgbColor SuggestSignalColor(PixelFrame frame)
+    {
+        var candidates = frame.Pixels.Span.ToArray()
+            .Where(pixel =>
+            {
+                var hsv = Core.Analysis.ColorMath.ToHsv(pixel);
+                return hsv.Saturation >= .38 && hsv.Value >= .25;
+            })
+            .GroupBy(pixel => (pixel.R / 24, pixel.G / 24, pixel.B / 24))
+            .OrderByDescending(group => group.Count())
+            .FirstOrDefault();
+        if (candidates is null) return new RgbColor(216, 52, 52);
+        return new RgbColor((byte)candidates.Average(pixel => pixel.R), (byte)candidates.Average(pixel => pixel.G), (byte)candidates.Average(pixel => pixel.B));
+    }
+
     public static BitmapSource CreateSyntheticBar(double value, int width = 320, int height = 42)
     {
         var stride = width * 4;

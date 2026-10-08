@@ -38,6 +38,8 @@
                             <TextBlock x:Name="CaptureStatusText" Text="Select an ROI, then choose a game window or monitor." Margin="0,5,0,0"/>
                         </StackPanel>
                         <WrapPanel DockPanel.Dock="Right" VerticalAlignment="Center">
+                            <Button Content="Load profile" Click="LoadProfile_Click" Margin="0,0,8,0"/>
+                            <Button Content="Save profile" Click="SaveProfile_Click" Margin="0,0,8,0"/>
                             <Button x:Name="StopMonitoringButton" Content="Stop" Click="StopMonitoring_Click" Margin="0,0,8,0" IsEnabled="False"/>
                             <Button x:Name="StartMonitoringButton" Style="{StaticResource PrimaryButton}" Content="Choose target" Click="StartMonitoring_Click"/>
                         </WrapPanel>
@@ -69,6 +71,7 @@
                                 <Grid Margin="0,16,0,4"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="Detected HP" Foreground="{StaticResource MutedBrush}"/><TextBlock x:Name="DetectedValueText" Text="—" FontSize="34" FontWeight="SemiBold"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="Confidence" Foreground="{StaticResource MutedBrush}"/><TextBlock x:Name="ConfidenceText" Text="—" FontSize="34" FontWeight="SemiBold"/></StackPanel></Grid>
                                 <TextBlock Text="Matching mask" Foreground="{StaticResource MutedBrush}" Margin="0,14,0,7"/>
                                 <Border Height="76" Background="#090B0E" CornerRadius="6" ClipToBounds="True"><Image x:Name="MaskImage" Stretch="Fill"/></Border>
+                                <TextBlock x:Name="ColorText" Text="Signal color  #D83434" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0"/>
                                 <TextBlock x:Name="RoiText" Text="ROI not selected" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </Border>

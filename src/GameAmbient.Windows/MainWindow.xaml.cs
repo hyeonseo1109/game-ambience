@@ -5,6 +5,7 @@ using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using GameAmbient.Core.Detection;
 using GameAmbient.Core.Domain;
+using GameAmbient.Core.Profiles;
 using GameAmbient.Core.Stabilization;
 using GameAmbient.Windows.Capture;
 using GameAmbient.Windows.Overlay;
@@ -15,9 +16,9 @@ namespace GameAmbient.Windows;
 
 public partial class MainWindow : Window
 {
-    private readonly RgbColor _targetColor = new(216, 52, 52);
-    private readonly ColorBarDetector _detector;
-    private readonly MedianHysteresisStabilizer _stabilizer;
+    private RgbColor _targetColor = new(216, 52, 52);
+    private ColorBarDetector _detector;
+    private MedianHysteresisStabilizer _stabilizer;
     private readonly AmbientOverlayWindow _overlay = new();
     private readonly WindowsGraphicsCaptureSource _capture = new();
     private BitmapSource? _screenshot;
@@ -104,11 +105,14 @@ public partial class MainWindow : Window
     {
         if (_screenshot is null) return;
         var frame = ScreenshotAnalyzer.Crop(_screenshot, roi);
+        _targetColor = ScreenshotAnalyzer.SuggestSignalColor(frame);
+        _detector = new ColorBarDetector(new ColorBarDetectorOptions(_targetColor));
         var result = _detector.Detect(frame, DateTimeOffset.Now);
         MaskImage.Source = ScreenshotAnalyzer.CreateMask(frame, _targetColor, 18, .35, .35);
         DetectedValueText.Text = result.Value is null ? "Unknown" : $"{result.Value:P0}";
         ConfidenceText.Text = $"{result.Confidence:P0}";
         StatePill.Text = result.Value is null ? "UNKNOWN" : result.Value <= .15 ? "CRITICAL" : result.Value <= .30 ? "WARNING" : "SAFE";
+        ColorText.Text = $"Signal color  #{_targetColor.R:X2}{_targetColor.G:X2}{_targetColor.B:X2} · auto-calibrated";
         RoiText.Text = $"Normalized ROI  x {roi.X:F3} · y {roi.Y:F3} · w {roi.Width:F3} · h {roi.Height:F3}";
     }
 
@@ -177,5 +181,46 @@ public partial class MainWindow : Window
             StatePill.Text = stable.State.ToString().ToUpperInvariant();
             _overlay.Preview(stable.State, stable.Value ?? 1);
         });
+    }
+
+    private async void SaveProfile_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedRoi is not { } roi)
+        {
+            MessageBox.Show(this, "Select a HUD region before saving a profile.", "ROI required", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var dialog = new SaveFileDialog { Filter = "Game Ambience profile|*.gameambient.json", FileName = "health.gameambient.json" };
+        if (dialog.ShowDialog(this) != true) return;
+        var profile = new GameProfile(GameProfile.CurrentSchemaVersion, Guid.NewGuid(), Path.GetFileNameWithoutExtension(dialog.FileName),
+            new GameAmbient.Core.Profiles.CaptureTarget(CaptureTargetKind.Window, null, null, null), roi,
+            new ColorBarDetectorOptions(_targetColor), new StabilizerOptions(),
+            new AmbientEffectOptions(new RgbColor(205, 35, 42), new RgbColor(255, 28, 34)),
+            Calibration: _screenshot is null ? null : new CalibrationMetadata(_screenshot.PixelWidth, _screenshot.PixelHeight, DateTimeOffset.Now));
+        await using var stream = File.Create(dialog.FileName);
+        await new ProfileStore().SaveAsync(profile, stream);
+        CaptureStatusText.Text = $"Profile saved · {Path.GetFileName(dialog.FileName)}";
+    }
+
+    private async void LoadProfile_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Filter = "Game Ambience profile|*.gameambient.json", CheckFileExists = true };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            await using var stream = File.OpenRead(dialog.FileName);
+            var profile = await new ProfileStore().LoadAsync(stream);
+            _selectedRoi = profile.Roi;
+            _targetColor = profile.Detector.TargetColor;
+            _detector = new ColorBarDetector(profile.Detector);
+            _stabilizer = new MedianHysteresisStabilizer(profile.Stabilizer);
+            ColorText.Text = $"Signal color  #{_targetColor.R:X2}{_targetColor.G:X2}{_targetColor.B:X2} · profile";
+            RoiText.Text = $"Loaded ROI  x {profile.Roi.X:F3} · y {profile.Roi.Y:F3} · w {profile.Roi.Width:F3} · h {profile.Roi.Height:F3}";
+            CaptureStatusText.Text = $"Profile loaded · {profile.Name}";
+        }
+        catch (InvalidDataException exception)
+        {
+            MessageBox.Show(this, exception.Message, "Invalid profile", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 }
