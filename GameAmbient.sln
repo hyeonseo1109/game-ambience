@@ -1,0 +1,31 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameAmbient.Core", "src\GameAmbient.Core\GameAmbient.Core.csproj", "{A2C7723A-1BD0-44D6-89EE-3CE4B5AB0E19}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameAmbient.Windows", "src\GameAmbient.Windows\GameAmbient.Windows.csproj", "{1D6D5307-503F-4B29-9A31-034933071C9A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GameAmbient.Core.Tests", "tests\GameAmbient.Core.Tests\GameAmbient.Core.Tests.csproj", "{0A3D699F-C762-4535-B854-9C16A48A9A8F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A2C7723A-1BD0-44D6-89EE-3CE4B5AB0E19}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A2C7723A-1BD0-44D6-89EE-3CE4B5AB0E19}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A2C7723A-1BD0-44D6-89EE-3CE4B5AB0E19}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A2C7723A-1BD0-44D6-89EE-3CE4B5AB0E19}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1D6D5307-503F-4B29-9A31-034933071C9A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1D6D5307-503F-4B29-9A31-034933071C9A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1D6D5307-503F-4B29-9A31-034933071C9A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1D6D5307-503F-4B29-9A31-034933071C9A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0A3D699F-C762-4535-B854-9C16A48A9A8F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0A3D699F-C762-4535-B854-9C16A48A9A8F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0A3D699F-C762-4535-B854-9C16A48A9A8F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0A3D699F-C762-4535-B854-9C16A48A9A8F}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
