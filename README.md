@@ -22,12 +22,12 @@ dotnet run --project src/GameAmbient.Windows/GameAmbient.Windows.csproj
 ### Minecraft overlay test
 
 1. Run Minecraft in windowed or borderless-windowed mode.
-2. Import a screenshot and select the HUD ROI.
-3. Click **Choose game window** and select Minecraft.
+2. Import a screenshot, select the heart ROI, and choose **Segmented Hearts**.
+3. Confirm the numbered slots, then click **Choose game window** and select Minecraft.
 4. Use **Warning** and **Critical** to verify the click-through overlay.
 5. Click **Start**, return to Minecraft, then test Alt+Tab, window movement, and resize.
 
-Vanilla Minecraft uses segmented hearts. The current `ColorBarDetector` can validate capture and overlay behavior but cannot report those hearts accurately. See [the Windows smoke-test guide](docs/windows-smoke-test.md) for the supplied screenshots and exact steps.
+Vanilla Minecraft hearts are classified slot-by-slot as full, half, empty, or unknown. See [the calibration guide](docs/minecraft-hearts.md) and [Windows smoke-test guide](docs/windows-smoke-test.md) for the supplied screenshots and exact steps.
 
 The app observes pixels already visible on the screen. It does **not** read or modify game memory, inject DLLs, hook graphics APIs, inspect network traffic, automate input, or bypass anti-cheat software. Captured pixels remain in local memory and are not uploaded or retained by default.
 
@@ -64,4 +64,4 @@ Borderless-windowed or windowed game mode is recommended. Ordinary overlays may 
 
 ## Current scope
 
-The MVP focuses on horizontal or vertical single-color bars, screenshot calibration, detector diagnostics, safe/warning/critical state stabilization, profile persistence, a full-pipeline simulator, game-window tracking, tray behavior, and a click-through edge-pulse overlay. OCR, automatic HUD discovery, cloud sync, accounts, and plugins are out of scope.
+The MVP supports continuous color bars and calibrated single-row Minecraft-style segmented hearts, screenshot diagnostics, safe/warning/critical state stabilization, profile persistence, a full-pipeline simulator, game-window tracking, tray behavior, and a click-through edge-pulse overlay. OCR, broad automatic HUD discovery, cloud sync, accounts, and plugins are out of scope.

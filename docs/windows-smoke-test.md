@@ -9,7 +9,7 @@ The supplied Minecraft screenshots are 1680 × 1050. Their vanilla heart HUD is 
 - pixels: `x=476, y=895, width=326, height=38`
 - normalized: `x=0.283, y=0.852, width=0.194, height=0.036`
 
-Select only the heart row, excluding hunger and the experience bar. The current Color Bar detector will not report vanilla hearts accurately; this selection is for validating live capture and lifecycle. A SegmentedDetector is required for actual heart counting.
+Select only the heart row, excluding hunger and the experience bar, then choose **Segmented Hearts**. The expected results are 75% for the damaged screenshot and 100% for the full-health screenshot.
 
 ## Test procedure
 
@@ -17,7 +17,7 @@ Select only the heart row, excluding hunger and the experience bar. The current 
 2. Open Minecraft world **게임 앰비언스 테스트용** in windowed or borderless-windowed mode.
 3. In Game Ambient, choose **Import PNG / JPEG** and open either supplied screenshot.
 4. Drag a tight rectangle around the ten-heart row using the coordinates above as a guide.
-5. Click **Choose game window**, then select the Minecraft window in the Windows capture picker.
+5. Choose **Segmented Hearts**, confirm 10 numbered slots, then click **Choose game window** and select Minecraft.
 6. Confirm that the target title, process name, and resolution appear in Game Ambient.
 7. Click **Warning**. Confirm a soft red pulse follows the Minecraft window bounds.
 8. Click inside Minecraft and verify mouse input passes through the overlay.
@@ -36,6 +36,5 @@ Select only the heart row, excluding hunger and the experience bar. The current 
 
 ## Expected limitations
 
-- Color Bar detection is intended for continuous bars and does not count vanilla Minecraft hearts.
-- Minecraft heart detection needs a future `SegmentedDetector` that classifies full, half, and empty slots.
+- Poison, wither, absorption, hardcore, blinking, custom-resource-pack, and multi-row hearts may return UNKNOWN until separately calibrated.
 - Windows may warn on first launch because the portable build is not code-signed.

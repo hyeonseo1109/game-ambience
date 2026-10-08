@@ -82,7 +82,7 @@
                                 <TextBlock Text="Matching mask" Foreground="{StaticResource MutedBrush}" Margin="0,14,0,7"/>
                                 <Border Height="76" Background="#090B0E" CornerRadius="6" ClipToBounds="True"><Image x:Name="MaskImage" Stretch="Fill"/></Border>
                                 <TextBlock x:Name="ColorText" Text="Signal color  #D83434" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0"/>
-                                <TextBlock Text="Detector  Color Bar · vanilla Minecraft hearts require SegmentedDetector" Foreground="#D7A65D" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                                <TextBlock Text="Choose Color Bar or Segmented Hearts. Unsupported effect hearts become UNKNOWN." Foreground="#D7A65D" Margin="0,6,0,0" TextWrapping="Wrap"/>
                                 <TextBlock x:Name="RoiText" Text="ROI not selected" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0" TextWrapping="Wrap"/>
                                 <StackPanel x:Name="HeartSettingsPanel" Visibility="Collapsed" Margin="0,14,0,0">
                                     <DockPanel><TextBlock Text="Heart slots"/><TextBlock x:Name="HeartCountText" Text="10" DockPanel.Dock="Right"/></DockPanel>
