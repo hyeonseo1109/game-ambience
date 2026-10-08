@@ -16,6 +16,8 @@ public sealed class WindowsGraphicsCaptureSource : IDisposable
     private long _lastFrameTicks;
     private int _processing;
     private bool _paused;
+    private int _frameWidth;
+    private int _frameHeight;
 
     public bool IsRunning => _session is not null;
     public WindowTargetInfo? Target { get; private set; }
@@ -46,6 +48,8 @@ public sealed class WindowsGraphicsCaptureSource : IDisposable
         _roi = roi;
         _paused = false;
         MinimumFrameIntervalTicks = TimeSpan.TicksPerSecond / Math.Clamp(maximumHz, 1, 30);
+        _frameWidth = _item.Size.Width;
+        _frameHeight = _item.Size.Height;
         _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(_device, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, _item.Size);
         _framePool.FrameArrived += OnFrameArrived;
         _session = _framePool.CreateCaptureSession(_item);
@@ -96,6 +100,14 @@ public sealed class WindowsGraphicsCaptureSource : IDisposable
             if (frame is null) return;
             var size = frame.ContentSize;
             if (size.Width <= 0 || size.Height <= 0) return;
+            if (size.Width != _frameWidth || size.Height != _frameHeight)
+            {
+                _frameWidth = size.Width;
+                _frameHeight = size.Height;
+                if (Target is not null) Target = Target with { CaptureWidth = size.Width, CaptureHeight = size.Height };
+                sender.Recreate(_device, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, size);
+                return;
+            }
             var rect = _roi.ToPixels(size.Width, size.Height);
             using var bitmap = CanvasBitmap.CreateFromDirect3D11Surface(_device, frame.Surface);
             var bytes = bitmap.GetPixelBytes(rect.X, rect.Y, rect.Width, rect.Height);
