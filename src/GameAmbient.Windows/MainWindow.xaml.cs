@@ -4,6 +4,8 @@ using System.ComponentModel;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using System.Windows.Controls;
+using System.Windows.Media;
 using GameAmbient.Core.Detection;
 using GameAmbient.Core.Domain;
 using GameAmbient.Core.Pipeline;
@@ -16,6 +18,11 @@ using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 using MessageBox = System.Windows.MessageBox;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
+using WpfRectangle = System.Windows.Shapes.Rectangle;
+using WpfTextBlock = System.Windows.Controls.TextBlock;
+using MediaColor = System.Windows.Media.Color;
+using MediaBrushes = System.Windows.Media.Brushes;
+using IoPath = System.IO.Path;
 
 namespace GameAmbient.Windows;
 
@@ -33,6 +40,9 @@ public partial class MainWindow : Window
     private NormalizedRect? _selectedRoi;
     private bool _exitRequested;
     private string? _currentProfileName;
+    private string _detectorType = "color-bar";
+    private HeartCalibrationSession? _heartCalibration;
+    private bool _updatingHeartControls;
 
     public MainWindow()
     {
@@ -120,6 +130,12 @@ public partial class MainWindow : Window
     {
         if (_screenshot is null) return;
         var frame = ScreenshotAnalyzer.Crop(_screenshot, roi);
+        if (_detectorType == "segmented-heart")
+        {
+            AnalyzeHearts(frame, roi);
+            return;
+        }
+        ClearSlotOverlay();
         _targetColor = ScreenshotAnalyzer.SuggestSignalColor(frame);
         _detector = new ColorBarDetector(new ColorBarDetectorOptions(_targetColor));
         _monitoring.Configure(new ColorBarDetectorOptions(_targetColor), new StabilizerOptions(), roi);
@@ -131,6 +147,73 @@ public partial class MainWindow : Window
         StatePill.Text = result.Value is null ? "UNKNOWN" : result.Value <= .15 ? "CRITICAL" : result.Value <= .30 ? "WARNING" : "SAFE";
         ColorText.Text = $"Signal color  #{_targetColor.R:X2}{_targetColor.G:X2}{_targetColor.B:X2} · auto-calibrated";
         RoiText.Text = $"Normalized ROI  x {roi.X:F3} · y {roi.Y:F3} · w {roi.Width:F3} · h {roi.Height:F3}";
+    }
+
+    private void AnalyzeHearts(PixelFrame frame, NormalizedRect roi)
+    {
+        if (_heartCalibration is null)
+        {
+            _heartCalibration = new HeartCalibrationSession();
+            var estimated = HeartSlotEstimator.Estimate(frame).Count;
+            _updatingHeartControls = true;
+            HeartCountSlider.Value = estimated;
+            HeartCountText.Text = estimated.ToString();
+            _updatingHeartControls = false;
+        }
+        var count = (int)Math.Round(HeartCountSlider.Value);
+        _heartCalibration.SetFrame(frame, count);
+        var result = _heartCalibration.LastResult;
+        if (result is null) return;
+        DrawHeartSlots(roi, _heartCalibration.Slots, result.Slots);
+        SelectedHeartSlider.Maximum = Math.Max(1, _heartCalibration.Slots.Count);
+        DetectedValueText.Text = result.NormalizedValue is null ? "Unknown" : $"{result.NormalizedValue:P0}";
+        ConfidenceText.Text = $"{result.Confidence:P0}";
+        StatePill.Text = result.NormalizedValue is null ? "UNKNOWN" : result.NormalizedValue <= .15 ? "CRITICAL" : result.NormalizedValue <= .30 ? "WARNING" : "SAFE";
+        HeartResultText.Text = $"FULL {result.FullHearts} · HALF {result.HalfHearts} · EMPTY {result.EmptyHearts} · UNKNOWN {result.UnknownHearts}\nHP {result.CurrentHealth}/{result.MaximumHealth} · templates {_heartCalibration.Templates.Count}/3";
+        ColorText.Text = "Slot features: redness + structure + optional templates";
+        RoiText.Text = $"Normalized heart ROI  x {roi.X:F3} · y {roi.Y:F3} · w {roi.Width:F3} · h {roi.Height:F3}";
+        MaskImage.Source = null;
+        _monitoring.Configure(new SegmentedHeartDetector(_heartCalibration.CreateOptions()), new StabilizerOptions(), roi);
+        StartMonitoringButton.IsEnabled = _monitoring.Target is not null;
+    }
+
+    private void DrawHeartSlots(NormalizedRect roi, IReadOnlyList<HeartSlot> slots, IReadOnlyList<HeartSlotResult>? results = null)
+    {
+        ClearSlotOverlay();
+        RoiRectangle.Visibility = Visibility.Visible;
+        Canvas.SetLeft(RoiRectangle, roi.X * ImageSurface.Width);
+        Canvas.SetTop(RoiRectangle, roi.Y * ImageSurface.Height);
+        RoiRectangle.Width = roi.Width * ImageSurface.Width;
+        RoiRectangle.Height = roi.Height * ImageSurface.Height;
+        foreach (var slot in slots)
+        {
+            var state = results?.FirstOrDefault(item => item.Index == slot.Index)?.State ?? HeartState.Unknown;
+            var color = state switch
+            {
+                HeartState.Full => Colors.LimeGreen,
+                HeartState.Half => Colors.Gold,
+                HeartState.Empty => Colors.DeepSkyBlue,
+                _ => Colors.OrangeRed
+            };
+            var rectangle = new WpfRectangle { Stroke = new SolidColorBrush(color), StrokeThickness = 2, Fill = MediaBrushes.Transparent };
+            var left = (roi.X + (slot.Bounds.X * roi.Width)) * ImageSurface.Width;
+            var top = (roi.Y + (slot.Bounds.Y * roi.Height)) * ImageSurface.Height;
+            rectangle.Width = slot.Bounds.Width * roi.Width * ImageSurface.Width;
+            rectangle.Height = slot.Bounds.Height * roi.Height * ImageSurface.Height;
+            Canvas.SetLeft(rectangle, left);
+            Canvas.SetTop(rectangle, top);
+            SelectionCanvas.Children.Add(rectangle);
+            var label = new WpfTextBlock { Text = (slot.Index + 1).ToString(), Foreground = MediaBrushes.White, Background = new SolidColorBrush(MediaColor.FromArgb(170, 0, 0, 0)), FontSize = 12 };
+            Canvas.SetLeft(label, left + 2);
+            Canvas.SetTop(label, top + 1);
+            SelectionCanvas.Children.Add(label);
+        }
+    }
+
+    private void ClearSlotOverlay()
+    {
+        SelectionCanvas.Children.Clear();
+        SelectionCanvas.Children.Add(RoiRectangle);
     }
 
     private void SimulatorSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -189,7 +272,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        _monitoring.Configure(new ColorBarDetectorOptions(_targetColor), new StabilizerOptions(), roi);
+        _monitoring.Configure(GetActiveDetector(), new StabilizerOptions(), roi);
         if (!_monitoring.Start()) CaptureStatusText.Text = "Choose a target and valid ROI before starting.";
     }
 
@@ -204,15 +287,17 @@ public partial class MainWindow : Window
         }
         var dialog = new SaveFileDialog { Filter = "Game Ambience profile|*.gameambient.json", FileName = "health.gameambient.json" };
         if (dialog.ShowDialog(this) != true) return;
-        var profile = new GameProfile(GameProfile.CurrentSchemaVersion, Guid.NewGuid(), Path.GetFileNameWithoutExtension(dialog.FileName),
-            new GameAmbient.Core.Profiles.CaptureTarget(CaptureTargetKind.Window, null, null, null), roi,
+        var profile = new GameProfile(GameProfile.CurrentSchemaVersion, Guid.NewGuid(), IoPath.GetFileNameWithoutExtension(dialog.FileName),
+            new GameAmbient.Core.Profiles.CaptureTarget(CaptureTargetKind.Window, _monitoring.Target?.ProcessName, _monitoring.Target?.Title, null), roi,
             new ColorBarDetectorOptions(_targetColor), new StabilizerOptions(),
             new AmbientEffectOptions(new RgbColor(205, 35, 42), new RgbColor(255, 28, 34)),
-            Calibration: _screenshot is null ? null : new CalibrationMetadata(_screenshot.PixelWidth, _screenshot.PixelHeight, DateTimeOffset.Now));
+            Calibration: _screenshot is null ? null : new CalibrationMetadata(_screenshot.PixelWidth, _screenshot.PixelHeight, DateTimeOffset.Now),
+            DetectorType: _detectorType,
+            SegmentedHearts: _detectorType == "segmented-heart" ? _heartCalibration?.CreateOptions() : null);
         await using var stream = File.Create(dialog.FileName);
         await new ProfileStore().SaveAsync(profile, stream);
         _currentProfileName = profile.Name;
-        CaptureStatusText.Text = $"Profile saved · {Path.GetFileName(dialog.FileName)}";
+        CaptureStatusText.Text = $"Profile saved · {IoPath.GetFileName(dialog.FileName)}";
     }
 
     private async void LoadProfile_Click(object sender, RoutedEventArgs e)
@@ -227,7 +312,19 @@ public partial class MainWindow : Window
             _targetColor = profile.Detector.TargetColor;
             _detector = new ColorBarDetector(profile.Detector);
             _stabilizer = new MedianHysteresisStabilizer(profile.Stabilizer);
-            _monitoring.Configure(profile.Detector, profile.Stabilizer, profile.Roi);
+            _detectorType = string.IsNullOrWhiteSpace(profile.DetectorType) ? "color-bar" : profile.DetectorType;
+            DetectorTypeCombo.SelectedIndex = _detectorType == "segmented-heart" ? 1 : 0;
+            if (profile.SegmentedHearts is not null)
+            {
+                _heartCalibration = new HeartCalibrationSession();
+                var frame = _screenshot is null ? null : ScreenshotAnalyzer.Crop(_screenshot, profile.Roi);
+                _heartCalibration.Load(profile.SegmentedHearts, frame);
+                _updatingHeartControls = true;
+                HeartCountSlider.Value = profile.SegmentedHearts.Slots.Count;
+                _updatingHeartControls = false;
+                DrawHeartSlots(profile.Roi, profile.SegmentedHearts.Slots, _heartCalibration.LastResult?.Slots);
+            }
+            _monitoring.Configure(DetectorFactory.Create(profile), profile.Stabilizer, profile.Roi);
             _currentProfileName = profile.Name;
             ColorText.Text = $"Signal color  #{_targetColor.R:X2}{_targetColor.G:X2}{_targetColor.B:X2} · profile";
             RoiText.Text = $"Loaded ROI  x {profile.Roi.X:F3} · y {profile.Roi.Y:F3} · w {profile.Roi.Width:F3} · h {profile.Roi.Height:F3}";
@@ -301,5 +398,56 @@ public partial class MainWindow : Window
         _tray.Dispose();
         Close();
         System.Windows.Application.Current.Shutdown();
+    }
+
+    private IDetector GetActiveDetector()
+    {
+        if (_detectorType == "segmented-heart" && _heartCalibration is not null)
+            return new SegmentedHeartDetector(_heartCalibration.CreateOptions());
+        return _detector;
+    }
+
+    private void DetectorTypeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsInitialized || DetectorTypeCombo.SelectedItem is not ComboBoxItem item) return;
+        _detectorType = item.Tag?.ToString() ?? "color-bar";
+        HeartSettingsPanel.Visibility = _detectorType == "segmented-heart" ? Visibility.Visible : Visibility.Collapsed;
+        if (_selectedRoi is { } roi && _screenshot is not null)
+        {
+            if (_detectorType == "segmented-heart" && _heartCalibration is null)
+            {
+                var frame = ScreenshotAnalyzer.Crop(_screenshot, roi);
+                var estimated = HeartSlotEstimator.Estimate(frame).Count;
+                _updatingHeartControls = true;
+                HeartCountSlider.Value = estimated;
+                _updatingHeartControls = false;
+            }
+            AnalyzeScreenshot(roi);
+        }
+    }
+
+    private void HeartCountSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!IsInitialized || _updatingHeartControls || HeartCountText is null) return;
+        HeartCountText.Text = Math.Round(HeartCountSlider.Value).ToString("F0");
+        SelectedHeartSlider.Maximum = Math.Max(1, Math.Round(HeartCountSlider.Value));
+        if (_detectorType == "segmented-heart" && _selectedRoi is { } roi && _screenshot is not null) AnalyzeScreenshot(roi);
+    }
+
+    private void SelectedHeartSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (SelectedHeartText is not null) SelectedHeartText.Text = Math.Round(SelectedHeartSlider.Value).ToString("F0");
+    }
+
+    private void MarkFull_Click(object sender, RoutedEventArgs e) => RegisterHeartTemplate(HeartState.Full);
+    private void MarkHalf_Click(object sender, RoutedEventArgs e) => RegisterHeartTemplate(HeartState.Half);
+    private void MarkEmpty_Click(object sender, RoutedEventArgs e) => RegisterHeartTemplate(HeartState.Empty);
+
+    private void RegisterHeartTemplate(HeartState state)
+    {
+        if (_heartCalibration is null || _selectedRoi is not { } roi) return;
+        var index = Math.Clamp((int)Math.Round(SelectedHeartSlider.Value) - 1, 0, _heartCalibration.Slots.Count - 1);
+        _heartCalibration.RegisterTemplate(index, state);
+        if (_screenshot is not null) AnalyzeHearts(ScreenshotAnalyzer.Crop(_screenshot, roi), roi);
     }
 }

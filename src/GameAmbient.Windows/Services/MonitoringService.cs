@@ -51,7 +51,12 @@ public sealed class MonitoringService : IDisposable
 
     public void Configure(ColorBarDetectorOptions detector, StabilizerOptions stabilizer, NormalizedRect roi)
     {
-        _detector = new ColorBarDetector(detector);
+        Configure(new ColorBarDetector(detector), stabilizer, roi);
+    }
+
+    public void Configure(IDetector detector, StabilizerOptions stabilizer, NormalizedRect roi)
+    {
+        _detector = detector;
         _stabilizer = new MedianHysteresisStabilizer(stabilizer);
         _roi = roi;
     }

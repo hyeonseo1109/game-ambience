@@ -51,7 +51,7 @@ public sealed class SegmentedHeartDetector : IDetector
     {
         var features = ExtractFeatures(slot, _options.FeatureGridSize);
         var redCoverage = CalculateRedCoverage(slot);
-        if (_options.Templates.Count > 0)
+        if (_options.Templates.Select(template => template.State).Distinct().Count() >= 3)
         {
             var candidates = _options.Templates
                 .Where(template => template.GridSize == _options.FeatureGridSize && template.Features.Count == features.Count)

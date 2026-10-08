@@ -59,7 +59,7 @@
                                 <Viewbox Stretch="Uniform">
                                     <Grid x:Name="ImageSurface" Background="#090B0E" MouseLeftButtonDown="ImageSurface_MouseLeftButtonDown" MouseMove="ImageSurface_MouseMove" MouseLeftButtonUp="ImageSurface_MouseLeftButtonUp">
                                         <Image x:Name="ScreenshotImage" Stretch="Fill"/>
-                                        <Canvas IsHitTestVisible="False"><Rectangle x:Name="RoiRectangle" Stroke="#FF665F" StrokeThickness="3" Fill="#22FF665F" Visibility="Collapsed"/></Canvas>
+                                        <Canvas x:Name="SelectionCanvas" IsHitTestVisible="False"><Rectangle x:Name="RoiRectangle" Stroke="#FF665F" StrokeThickness="3" Fill="#22FF665F" Visibility="Collapsed"/></Canvas>
                                         <TextBlock x:Name="EmptyScreenshotText" Text="Drop in a game screenshot to begin" Foreground="#697581" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Grid>
                                 </Viewbox>
@@ -71,12 +71,31 @@
                         <Border Background="{StaticResource PanelBrush}" CornerRadius="12" Padding="18" Margin="0,0,0,12">
                             <StackPanel>
                                 <TextBlock Text="DETECTOR OUTPUT" FontSize="11" Foreground="{StaticResource MutedBrush}"/>
+                                <DockPanel Margin="0,10,0,0">
+                                    <TextBlock Text="Detection method" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+                                    <ComboBox x:Name="DetectorTypeCombo" DockPanel.Dock="Right" Width="155" SelectedIndex="0" SelectionChanged="DetectorTypeCombo_SelectionChanged">
+                                        <ComboBoxItem Content="Color Bar" Tag="color-bar"/>
+                                        <ComboBoxItem Content="Segmented Hearts" Tag="segmented-heart"/>
+                                    </ComboBox>
+                                </DockPanel>
                                 <Grid Margin="0,16,0,4"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="Detected HP" Foreground="{StaticResource MutedBrush}"/><TextBlock x:Name="DetectedValueText" Text="—" FontSize="34" FontWeight="SemiBold"/></StackPanel><StackPanel Grid.Column="1"><TextBlock Text="Confidence" Foreground="{StaticResource MutedBrush}"/><TextBlock x:Name="ConfidenceText" Text="—" FontSize="34" FontWeight="SemiBold"/></StackPanel></Grid>
                                 <TextBlock Text="Matching mask" Foreground="{StaticResource MutedBrush}" Margin="0,14,0,7"/>
                                 <Border Height="76" Background="#090B0E" CornerRadius="6" ClipToBounds="True"><Image x:Name="MaskImage" Stretch="Fill"/></Border>
                                 <TextBlock x:Name="ColorText" Text="Signal color  #D83434" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0"/>
                                 <TextBlock Text="Detector  Color Bar · vanilla Minecraft hearts require SegmentedDetector" Foreground="#D7A65D" Margin="0,6,0,0" TextWrapping="Wrap"/>
                                 <TextBlock x:Name="RoiText" Text="ROI not selected" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                                <StackPanel x:Name="HeartSettingsPanel" Visibility="Collapsed" Margin="0,14,0,0">
+                                    <DockPanel><TextBlock Text="Heart slots"/><TextBlock x:Name="HeartCountText" Text="10" DockPanel.Dock="Right"/></DockPanel>
+                                    <Slider x:Name="HeartCountSlider" Minimum="1" Maximum="20" Value="10" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="HeartCountSlider_ValueChanged"/>
+                                    <DockPanel Margin="0,7,0,0"><TextBlock Text="Template slot"/><TextBlock x:Name="SelectedHeartText" Text="1" DockPanel.Dock="Right"/></DockPanel>
+                                    <Slider x:Name="SelectedHeartSlider" Minimum="1" Maximum="10" Value="1" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="SelectedHeartSlider_ValueChanged"/>
+                                    <WrapPanel Margin="0,8,0,0">
+                                        <Button Content="Mark Full" Click="MarkFull_Click" Margin="0,0,6,0" Padding="9,6"/>
+                                        <Button Content="Mark Half" Click="MarkHalf_Click" Margin="0,0,6,0" Padding="9,6"/>
+                                        <Button Content="Mark Empty" Click="MarkEmpty_Click" Padding="9,6"/>
+                                    </WrapPanel>
+                                    <TextBlock x:Name="HeartResultText" Text="Select a heart ROI to calibrate." Foreground="{StaticResource MutedBrush}" Margin="0,8,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 
