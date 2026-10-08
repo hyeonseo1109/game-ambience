@@ -7,8 +7,18 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>GameAmbient</AssemblyName>
     <RootNamespace>GameAmbient.Windows</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <WindowsAppSDKSelfContained Condition="$([MSBuild]::IsOSPlatform('Windows'))">true</WindowsAppSDKSelfContained>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\GameAmbient.Core\GameAmbient.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" />
+    <Compile Remove="Capture\WindowsGraphicsCaptureSource.CrossBuild.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
+    <Compile Remove="Capture\WindowsGraphicsCaptureSource.cs" />
   </ItemGroup>
 </Project>
