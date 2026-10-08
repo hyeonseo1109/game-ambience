@@ -13,3 +13,12 @@ jobs:
       - run: dotnet restore GameAmbient.sln
       - run: dotnet build GameAmbient.sln -c Release --no-restore
       - run: dotnet test GameAmbient.sln -c Release --no-build
+      - name: Publish portable Windows app
+        run: dotnet publish src/GameAmbient.Windows/GameAmbient.Windows.csproj -c Release -r win-x64 --self-contained true --no-restore -o artifacts/game-ambient-win-x64
+      - name: Upload Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameAmbient-win-x64
+          path: artifacts/game-ambient-win-x64
+          if-no-files-found: error
+          retention-days: 14
