@@ -1,16 +1,21 @@
 using System.IO;
 using System.Windows;
+using System.ComponentModel;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using GameAmbient.Core.Detection;
 using GameAmbient.Core.Domain;
+using GameAmbient.Core.Pipeline;
 using GameAmbient.Core.Profiles;
 using GameAmbient.Core.Stabilization;
-using GameAmbient.Windows.Capture;
-using GameAmbient.Windows.Overlay;
 using GameAmbient.Windows.Services;
 using Microsoft.Win32;
+using Point = System.Windows.Point;
+using MouseEventArgs = System.Windows.Input.MouseEventArgs;
+using MessageBox = System.Windows.MessageBox;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 
 namespace GameAmbient.Windows;
 
@@ -19,23 +24,33 @@ public partial class MainWindow : Window
     private RgbColor _targetColor = new(216, 52, 52);
     private ColorBarDetector _detector;
     private MedianHysteresisStabilizer _stabilizer;
-    private readonly AmbientOverlayWindow _overlay = new();
-    private readonly WindowsGraphicsCaptureSource _capture = new();
+    private readonly MonitoringService _monitoring;
+    private readonly TrayIconService _tray;
+    private readonly ApplicationSettingsFile _settingsFile = new();
+    private ApplicationSettings _settings = new();
     private BitmapSource? _screenshot;
     private Point? _dragStart;
     private NormalizedRect? _selectedRoi;
+    private bool _exitRequested;
+    private string? _currentProfileName;
 
     public MainWindow()
     {
         InitializeComponent();
         _detector = new ColorBarDetector(new ColorBarDetectorOptions(_targetColor));
         _stabilizer = new MedianHysteresisStabilizer(new StabilizerOptions());
+        _monitoring = new MonitoringService();
+        _tray = new TrayIconService();
         ImageSurface.Width = 640;
         ImageSurface.Height = 360;
-        Loaded += (_, _) => RunSimulator();
-        _capture.RoiFrameArrived += Capture_RoiFrameArrived;
-        _capture.TargetClosed += (_, _) => Dispatcher.Invoke(() => StopMonitoring("Capture target closed. Waiting for reconnection."));
-        Closed += (_, _) => { _capture.Dispose(); _overlay.Close(); };
+        Loaded += async (_, _) => await InitializeAsync();
+        _monitoring.SnapshotChanged += Monitoring_SnapshotChanged;
+        _tray.OpenRequested += (_, _) => Dispatcher.Invoke(ShowFromTray);
+        _tray.PauseResumeRequested += (_, _) => Dispatcher.Invoke(_monitoring.TogglePause);
+        _tray.StopRequested += (_, _) => Dispatcher.Invoke(_monitoring.Stop);
+        _tray.ExitRequested += (_, _) => Dispatcher.Invoke(ExitApplication);
+        Closing += MainWindow_Closing;
+        StateChanged += (_, _) => { if (WindowState == WindowState.Minimized && _settings.MinimizeToTray) Hide(); };
     }
 
     private void ImportScreenshot_Click(object sender, RoutedEventArgs e)
@@ -107,6 +122,8 @@ public partial class MainWindow : Window
         var frame = ScreenshotAnalyzer.Crop(_screenshot, roi);
         _targetColor = ScreenshotAnalyzer.SuggestSignalColor(frame);
         _detector = new ColorBarDetector(new ColorBarDetectorOptions(_targetColor));
+        _monitoring.Configure(new ColorBarDetectorOptions(_targetColor), new StabilizerOptions(), roi);
+        StartMonitoringButton.IsEnabled = _monitoring.Target is not null;
         var result = _detector.Detect(frame, DateTimeOffset.Now);
         MaskImage.Source = ScreenshotAnalyzer.CreateMask(frame, _targetColor, 18, .35, .35);
         DetectedValueText.Text = result.Value is null ? "Unknown" : $"{result.Value:P0}";
@@ -131,13 +148,40 @@ public partial class MainWindow : Window
         var result = _detector.Detect(ScreenshotAnalyzer.Crop(bitmap, new NormalizedRect(0, 0, 1, 1)), DateTimeOffset.Now);
         var stable = _stabilizer.Push(result);
         StatePill.Text = stable.State.ToString().ToUpperInvariant();
+        _monitoring.Preview(stable.State, stable.Value ?? 1);
     }
 
-    private void PreviewSafe_Click(object sender, RoutedEventArgs e) => _overlay.Preview(HudState.Safe);
-    private void PreviewWarning_Click(object sender, RoutedEventArgs e) => _overlay.Preview(HudState.Warning, .25);
-    private void PreviewCritical_Click(object sender, RoutedEventArgs e) => _overlay.Preview(HudState.Critical, .10);
+    private void PreviewSafe_Click(object sender, RoutedEventArgs e) => _monitoring.Preview(HudState.Safe, 1);
+    private void PreviewWarning_Click(object sender, RoutedEventArgs e) => _monitoring.Preview(HudState.Warning, .25);
+    private void PreviewCritical_Click(object sender, RoutedEventArgs e) => _monitoring.Preview(HudState.Critical, .10);
 
-    private async void StartMonitoring_Click(object sender, RoutedEventArgs e)
+    private async void ChooseTarget_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            ChooseTargetButton.IsEnabled = false;
+            CaptureStatusText.Text = "Waiting for Windows capture picker…";
+            var target = await _monitoring.ChooseTargetAsync(new WindowInteropHelper(this).Handle);
+            if (target is null)
+            {
+                CaptureStatusText.Text = "Target selection cancelled.";
+                return;
+            }
+            TargetText.Text = target.Title;
+            TargetDetailsText.Text = $"{target.ProcessName} · {target.CaptureWidth} × {target.CaptureHeight}";
+            StartMonitoringButton.IsEnabled = _selectedRoi is not null;
+        }
+        catch (Exception exception)
+        {
+            CaptureStatusText.Text = $"Target selection failed: {exception.Message}";
+        }
+        finally
+        {
+            ChooseTargetButton.IsEnabled = true;
+        }
+    }
+
+    private void StartMonitoring_Click(object sender, RoutedEventArgs e)
     {
         if (_selectedRoi is not { } roi)
         {
@@ -145,43 +189,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        try
-        {
-            CaptureStatusText.Text = "Choose a game window (recommended) or monitor…";
-            var started = await _capture.PickAndStartAsync(new WindowInteropHelper(this).Handle, roi, 8);
-            CaptureStatusText.Text = started ? "Connected · analyzing ROI at up to 8 Hz" : "Target selection cancelled.";
-            StartMonitoringButton.IsEnabled = !started;
-            StopMonitoringButton.IsEnabled = started;
-        }
-        catch (Exception exception)
-        {
-            StopMonitoring($"Capture could not start: {exception.Message}");
-        }
+        _monitoring.Configure(new ColorBarDetectorOptions(_targetColor), new StabilizerOptions(), roi);
+        if (!_monitoring.Start()) CaptureStatusText.Text = "Choose a target and valid ROI before starting.";
     }
 
-    private void StopMonitoring_Click(object sender, RoutedEventArgs e) => StopMonitoring("Monitoring stopped.");
-
-    private void StopMonitoring(string status)
-    {
-        _capture.Stop();
-        _overlay.Preview(HudState.Safe);
-        CaptureStatusText.Text = status;
-        StartMonitoringButton.IsEnabled = true;
-        StopMonitoringButton.IsEnabled = false;
-    }
-
-    private void Capture_RoiFrameArrived(object? sender, PixelFrame frame)
-    {
-        var result = _detector.Detect(frame, DateTimeOffset.Now);
-        var stable = _stabilizer.Push(result);
-        Dispatcher.BeginInvoke(() =>
-        {
-            DetectedValueText.Text = stable.Value is null ? "Unknown" : $"{stable.Value:P0}";
-            ConfidenceText.Text = $"{stable.Confidence:P0}";
-            StatePill.Text = stable.State.ToString().ToUpperInvariant();
-            _overlay.Preview(stable.State, stable.Value ?? 1);
-        });
-    }
+    private void StopMonitoring_Click(object sender, RoutedEventArgs e) => _monitoring.Stop();
 
     private async void SaveProfile_Click(object sender, RoutedEventArgs e)
     {
@@ -199,6 +211,7 @@ public partial class MainWindow : Window
             Calibration: _screenshot is null ? null : new CalibrationMetadata(_screenshot.PixelWidth, _screenshot.PixelHeight, DateTimeOffset.Now));
         await using var stream = File.Create(dialog.FileName);
         await new ProfileStore().SaveAsync(profile, stream);
+        _currentProfileName = profile.Name;
         CaptureStatusText.Text = $"Profile saved · {Path.GetFileName(dialog.FileName)}";
     }
 
@@ -214,6 +227,8 @@ public partial class MainWindow : Window
             _targetColor = profile.Detector.TargetColor;
             _detector = new ColorBarDetector(profile.Detector);
             _stabilizer = new MedianHysteresisStabilizer(profile.Stabilizer);
+            _monitoring.Configure(profile.Detector, profile.Stabilizer, profile.Roi);
+            _currentProfileName = profile.Name;
             ColorText.Text = $"Signal color  #{_targetColor.R:X2}{_targetColor.G:X2}{_targetColor.B:X2} · profile";
             RoiText.Text = $"Loaded ROI  x {profile.Roi.X:F3} · y {profile.Roi.Y:F3} · w {profile.Roi.Width:F3} · h {profile.Roi.Height:F3}";
             CaptureStatusText.Text = $"Profile loaded · {profile.Name}";
@@ -222,5 +237,69 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this, exception.Message, "Invalid profile", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    private async Task InitializeAsync()
+    {
+        _settings = await _settingsFile.LoadAsync();
+        IntensitySlider.Value = _settings.OverlayIntensity * 100;
+        GlowWidthSlider.Value = _settings.GlowWidth * 100;
+        _monitoring.ConfigureApplication(_settings);
+        RunSimulator();
+    }
+
+    private void Monitoring_SnapshotChanged(object? sender, MonitoringSnapshot snapshot)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            CaptureStatusText.Text = snapshot.Message;
+            if (snapshot.Target is { } target)
+            {
+                TargetText.Text = target.Title;
+                TargetDetailsText.Text = $"{target.ProcessName} · {target.CaptureWidth} × {target.CaptureHeight}";
+            }
+            if (snapshot.RawValue is { } raw) DetectedValueText.Text = $"{raw:P0}";
+            if (snapshot.StableValue is not null) DetectedValueText.Text = $"{snapshot.StableValue:P0}";
+            ConfidenceText.Text = snapshot.Confidence == 0 ? "—" : $"{snapshot.Confidence:P0}";
+            StatePill.Text = snapshot.HudState.ToString().ToUpperInvariant();
+            var active = snapshot.Status is MonitoringStatus.Monitoring or MonitoringStatus.Paused;
+            StartMonitoringButton.IsEnabled = !active && snapshot.Target is not null && _selectedRoi is not null;
+            StopMonitoringButton.IsEnabled = active;
+            _tray.Update(snapshot.Status.ToString(), _currentProfileName);
+        });
+    }
+
+    private async void OverlaySetting_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!IsInitialized || IntensityValueText is null || GlowWidthValueText is null) return;
+        IntensityValueText.Text = $"{IntensitySlider.Value:F0}%";
+        GlowWidthValueText.Text = $"{GlowWidthSlider.Value:F0}%";
+        _settings = _settings with { OverlayIntensity = IntensitySlider.Value / 100, GlowWidth = GlowWidthSlider.Value / 100 };
+        _monitoring.ConfigureApplication(_settings);
+        await _settingsFile.SaveAsync(_settings);
+    }
+
+    private void MainWindow_Closing(object? sender, CancelEventArgs e)
+    {
+        if (_exitRequested) return;
+        e.Cancel = true;
+        Hide();
+        _tray.Update(_monitoring.Status.ToString(), _currentProfileName);
+    }
+
+    private void ShowFromTray()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    private void ExitApplication()
+    {
+        _exitRequested = true;
+        _monitoring.Dispose();
+        _tray.Dispose();
+        Close();
+        System.Windows.Application.Current.Shutdown();
     }
 }

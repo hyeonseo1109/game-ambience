@@ -15,51 +15,74 @@ public sealed class WindowsGraphicsCaptureSource : IDisposable
     private NormalizedRect _roi;
     private long _lastFrameTicks;
     private int _processing;
+    private bool _paused;
 
     public bool IsRunning => _session is not null;
+    public WindowTargetInfo? Target { get; private set; }
     public event EventHandler<PixelFrame>? RoiFrameArrived;
     public event EventHandler? TargetClosed;
     public event EventHandler? FrameSkipped;
 
-    public async Task<bool> PickAndStartAsync(IntPtr ownerWindow, NormalizedRect roi, int maximumHz = 8)
+    public async Task<WindowTargetInfo?> PickTargetAsync(IntPtr ownerWindow)
     {
         if (!GraphicsCaptureSession.IsSupported()) throw new NotSupportedException("Windows Graphics Capture is not supported on this system.");
-        if (!roi.IsValid) throw new ArgumentException("A valid normalized ROI is required.", nameof(roi));
-        Stop();
+        ClearTarget();
 
         var picker = new GraphicsCapturePicker();
         WinRT.Interop.InitializeWithWindow.Initialize(picker, ownerWindow);
         _item = await picker.PickSingleItemAsync();
-        if (_item is null) return false;
+        if (_item is null) return null;
 
-        _roi = roi;
-        MinimumFrameIntervalTicks = TimeSpan.TicksPerSecond / Math.Clamp(maximumHz, 1, 30);
         _item.Closed += OnItemClosed;
+        Target = WindowTargetTracker.Resolve(_item.DisplayName, _item.Size.Width, _item.Size.Height);
+        return Target;
+    }
+
+    public void Start(NormalizedRect roi, int maximumHz = 8)
+    {
+        if (_item is null) throw new InvalidOperationException("Choose a capture target first.");
+        if (!roi.IsValid) throw new ArgumentException("A valid normalized ROI is required.", nameof(roi));
+        Stop();
+        _roi = roi;
+        _paused = false;
+        MinimumFrameIntervalTicks = TimeSpan.TicksPerSecond / Math.Clamp(maximumHz, 1, 30);
         _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(_device, DirectXPixelFormat.B8G8R8A8UIntNormalized, 2, _item.Size);
         _framePool.FrameArrived += OnFrameArrived;
         _session = _framePool.CreateCaptureSession(_item);
         _session.IsCursorCaptureEnabled = false;
         _session.StartCapture();
-        return true;
     }
+
+    public void SetPaused(bool paused) => _paused = paused;
 
     private long MinimumFrameIntervalTicks { get; set; } = TimeSpan.TicksPerSecond / 8;
 
     public void Stop()
     {
-        if (_item is not null) _item.Closed -= OnItemClosed;
         if (_framePool is not null) _framePool.FrameArrived -= OnFrameArrived;
         _session?.Dispose();
         _framePool?.Dispose();
         _session = null;
         _framePool = null;
-        _item = null;
         Interlocked.Exchange(ref _processing, 0);
+    }
+
+    public void ClearTarget()
+    {
+        Stop();
+        if (_item is not null) _item.Closed -= OnItemClosed;
+        _item = null;
+        Target = null;
     }
 
     private void OnFrameArrived(Direct3D11CaptureFramePool sender, object args)
     {
         var now = DateTime.UtcNow.Ticks;
+        if (_paused)
+        {
+            using var pausedFrame = sender.TryGetNextFrame();
+            return;
+        }
         if (now - Interlocked.Read(ref _lastFrameTicks) < MinimumFrameIntervalTicks || Interlocked.Exchange(ref _processing, 1) == 1)
         {
             FrameSkipped?.Invoke(this, EventArgs.Empty);
@@ -98,13 +121,13 @@ public sealed class WindowsGraphicsCaptureSource : IDisposable
 
     private void OnItemClosed(GraphicsCaptureItem sender, object args)
     {
-        Stop();
+        ClearTarget();
         TargetClosed?.Invoke(this, EventArgs.Empty);
     }
 
     public void Dispose()
     {
-        Stop();
+        ClearTarget();
         _device.Dispose();
     }
 }

@@ -7,11 +7,12 @@ namespace GameAmbient.Windows.Capture;
 public sealed class WindowsGraphicsCaptureSource : IDisposable
 {
     public bool IsRunning => false;
+    public WindowTargetInfo? Target { get; private set; }
     public event EventHandler<PixelFrame>? RoiFrameArrived;
     public event EventHandler? TargetClosed;
     public event EventHandler? FrameSkipped;
 
-    public Task<bool> PickAndStartAsync(IntPtr ownerWindow, NormalizedRect roi, int maximumHz = 8)
+    public Task<WindowTargetInfo?> PickTargetAsync(IntPtr ownerWindow)
     {
         GC.KeepAlive(RoiFrameArrived);
         GC.KeepAlive(TargetClosed);
@@ -19,6 +20,9 @@ public sealed class WindowsGraphicsCaptureSource : IDisposable
         throw new PlatformNotSupportedException("Live capture must run on Windows 10 version 2004 or later.");
     }
 
+    public void Start(NormalizedRect roi, int maximumHz = 8) => throw new PlatformNotSupportedException("Live capture must run on Windows.");
+    public void SetPaused(bool paused) { }
     public void Stop() { }
+    public void ClearTarget() => Target = null;
     public void Dispose() { }
 }
