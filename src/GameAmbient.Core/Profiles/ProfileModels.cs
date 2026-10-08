@@ -14,9 +14,11 @@ public sealed record GameProfile(
     StabilizerOptions Stabilizer,
     AmbientEffectOptions Ambient,
     PerformancePreset Performance = PerformancePreset.Balanced,
-    CalibrationMetadata? Calibration = null)
+    CalibrationMetadata? Calibration = null,
+    string DetectorType = "color-bar",
+    SegmentedHeartDetectorOptions? SegmentedHearts = null)
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 }
 
 public sealed record CaptureTarget(CaptureTargetKind Kind, string? ExecutableName, string? WindowTitleHint, string? MonitorDeviceName);

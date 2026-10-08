@@ -9,12 +9,16 @@ public sealed class ProfileStore
     public ProfileValidationResult Validate(GameProfile profile)
     {
         var errors = new List<string>();
-        if (profile.SchemaVersion != GameProfile.CurrentSchemaVersion) errors.Add($"Unsupported schema version {profile.SchemaVersion}.");
+        if (profile.SchemaVersion is < 1 or > GameProfile.CurrentSchemaVersion) errors.Add($"Unsupported schema version {profile.SchemaVersion}.");
         if (profile.Id == Guid.Empty) errors.Add("Profile id is required.");
         if (string.IsNullOrWhiteSpace(profile.Name)) errors.Add("Profile name is required.");
         if (!profile.Roi.IsValid) errors.Add("ROI must be inside normalized capture bounds.");
         if (profile.Stabilizer.CriticalEnter >= profile.Stabilizer.WarningEnter) errors.Add("Critical threshold must be below warning threshold.");
         if (profile.Ambient.MaximumOpacity is < 0 or > 1) errors.Add("Maximum opacity must be between 0 and 1.");
+        var detectorType = string.IsNullOrWhiteSpace(profile.DetectorType) ? "color-bar" : profile.DetectorType;
+        if (detectorType is not "color-bar" and not "segmented-heart") errors.Add($"Unsupported detector type '{detectorType}'.");
+        if (detectorType == "segmented-heart" && (profile.SegmentedHearts is null || profile.SegmentedHearts.Slots.Count == 0))
+            errors.Add("Segmented heart profiles require at least one heart slot.");
         return new ProfileValidationResult(errors.Count == 0, errors);
     }
 
