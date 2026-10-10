@@ -4,6 +4,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using GameAmbient.Core.Domain;
+using GameAmbient.Core.Effects;
 using GameAmbient.Windows.Capture;
 
 namespace GameAmbient.Windows.Overlay;
@@ -24,6 +25,7 @@ public partial class AmbientOverlayWindow : Window
     private double _widthScale = 1;
     private double _warningSeconds = 2;
     private double _criticalSeconds = 1.05;
+    private PulseSignature? _activePulse;
 
     public AmbientOverlayWindow()
     {
@@ -47,21 +49,23 @@ public partial class AmbientOverlayWindow : Window
 
     public void Preview(HudState state, double value = .2)
     {
-        if (state is HudState.Safe or HudState.Unknown)
+        var plan = HeartbeatEffectPlanner.Create(state, value, _intensity, _widthScale, _warningSeconds, _criticalSeconds);
+        if (!plan.IsVisible)
         {
             _pulse?.Stop(this);
+            _pulse = null;
+            _activePulse = null;
+            Opacity = 0;
             Hide();
             return;
         }
 
-        var critical = state == HudState.Critical;
-        var color = critical ? System.Windows.Media.Color.FromRgb(255, 28, 34) : System.Windows.Media.Color.FromRgb(205, 35, 42);
+        var red = (byte)Math.Round(205 + (50 * plan.Danger));
+        var green = (byte)Math.Round(38 - (18 * plan.Danger));
+        var blue = (byte)Math.Round(44 - (12 * plan.Danger));
+        var color = System.Windows.Media.Color.FromRgb(red, green, blue);
         TopColor.Color = BottomColor.Color = LeftColor.Color = RightColor.Color = color;
-        var danger = Math.Clamp((.30 - value) / .30, 0, 1);
-        var peak = Math.Clamp((critical ? .44 : .22 + (.10 * danger)) * _intensity, .04, .70);
-        var seconds = critical ? _criticalSeconds : _warningSeconds;
-        var width = (critical ? 190 : 145) * _widthScale;
-        TopGlow.Height = BottomGlow.Height = LeftGlow.Width = RightGlow.Width = width;
+        TopGlow.Height = BottomGlow.Height = LeftGlow.Width = RightGlow.Width = plan.GlowWidth;
 
         if (_targetBounds is null)
         {
@@ -73,16 +77,32 @@ public partial class AmbientOverlayWindow : Window
         if (!IsVisible) Show();
         ApplyTargetBounds();
 
+        var signature = new PulseSignature(
+            (int)Math.Round(plan.CycleSeconds * 20),
+            (int)Math.Round(plan.PeakOpacity * 50));
+        if (_activePulse == signature && _pulse is not null) return;
+
         _pulse?.Stop(this);
-        var animation = new DoubleAnimationUsingKeyFrames { RepeatBehavior = RepeatBehavior.Forever };
-        animation.KeyFrames.Add(new EasingDoubleKeyFrame(peak * .45, KeyTime.FromPercent(0)));
-        animation.KeyFrames.Add(new EasingDoubleKeyFrame(peak, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(seconds / 2))) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
-        animation.KeyFrames.Add(new EasingDoubleKeyFrame(peak * .45, KeyTime.FromTimeSpan(TimeSpan.FromSeconds(seconds))) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut } });
+        Opacity = 0;
+        var seconds = plan.CycleSeconds;
+        var peak = plan.PeakOpacity;
+        var animation = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = TimeSpan.FromSeconds(seconds),
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        animation.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, KeyTime.FromPercent(0)));
+        animation.KeyFrames.Add(new EasingDoubleKeyFrame(peak, KeyTime.FromPercent(.13)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
+        animation.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromPercent(.25)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn } });
+        animation.KeyFrames.Add(new EasingDoubleKeyFrame(peak * .72, KeyTime.FromPercent(.34)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
+        animation.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromPercent(.47)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn } });
+        animation.KeyFrames.Add(new DiscreteDoubleKeyFrame(0, KeyTime.FromPercent(1)));
         _pulse = new Storyboard();
         _pulse.Children.Add(animation);
         Storyboard.SetTarget(animation, this);
         Storyboard.SetTargetProperty(animation, new PropertyPath(OpacityProperty));
         _pulse.Begin(this, true);
+        _activePulse = signature;
     }
 
     private void ApplyTargetBounds()
@@ -106,4 +126,6 @@ public partial class AmbientOverlayWindow : Window
     private static extern IntPtr SetWindowLongPtr(IntPtr window, int index, IntPtr value);
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+    private readonly record struct PulseSignature(int CycleBucket, int OpacityBucket);
 }
